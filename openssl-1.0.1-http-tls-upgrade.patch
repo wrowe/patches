@@ -1,0 +1,85 @@
+diff --git a/apps/s_client.c b/apps/s_client.c
+index f80711f..87e5f86 100644
+--- a/apps/s_client.c
++++ b/apps/s_client.c
+@@ -403,7 +403,7 @@ static void sc_usage(void)
+     BIO_printf(bio_err,
+                "                 'prot' defines which one to assume.  Currently,\n");
+     BIO_printf(bio_err,
+-               "                 only \"smtp\", \"pop3\", \"imap\", \"ftp\" and \"xmpp\"\n");
++               "                 only \"smtp\", \"pop3\", \"imap\", \"ftp\", \"xmpp\" and \"http\"\n");
+     BIO_printf(bio_err, "                 are supported.\n");
+ #ifndef OPENSSL_NO_ENGINE
+     BIO_printf(bio_err,
+@@ -655,7 +655,8 @@ enum {
+     PROTO_POP3,
+     PROTO_IMAP,
+     PROTO_FTP,
+-    PROTO_XMPP
++    PROTO_XMPP,
++    PROTO_HTTP
+ };
+ 
+ int MAIN(int, char **);
+@@ -1077,6 +1078,8 @@ int MAIN(int argc, char **argv)
+                 starttls_proto = PROTO_FTP;
+             else if (strcmp(*argv, "xmpp") == 0)
+                 starttls_proto = PROTO_XMPP;
++            else if (strcmp(*argv, "http") == 0)
++                starttls_proto = PROTO_HTTP;
+             else
+                 goto bad;
+         }
+@@ -1632,8 +1635,7 @@ int MAIN(int argc, char **argv)
+         BIO_free(fbio);
+         BIO_printf(sbio, "AUTH TLS\r\n");
+         BIO_read(sbio, sbuf, BUFSIZZ);
+-    }
+-    if (starttls_proto == PROTO_XMPP) {
++    } else if (starttls_proto == PROTO_XMPP) {
+         int seen = 0;
+         BIO_printf(sbio, "<stream:stream "
+                    "xmlns:stream='http://etherx.jabber.org/streams' "
+@@ -1654,6 +1656,42 @@ int MAIN(int argc, char **argv)
+         if (!strstr(sbuf, "<proceed"))
+             goto shut;
+         mbuf[0] = 0;
++    } else if (starttls_proto == PROTO_HTTP) {
++        int foundit = 0;
++        BIO *fbio = BIO_new(BIO_f_buffer());
++        BIO_push(fbio, sbio);
++        BIO_printf(fbio, "OPTIONS * HTTP/1.1\r\n");
++        BIO_printf(fbio, "Connection: Upgrade\r\n");
++        BIO_printf(fbio, "Host: %s\r\n", host);
++#ifndef OPENSSL_NO_TLS1
++        if (meth == TLSv1_2_client_method())
++            BIO_printf(fbio, "Upgrade: TLS/1.2\r\n");
++        else if (meth == TLSv1_1_client_method())
++            BIO_printf(fbio, "Upgrade: TLS/1.1\r\n");
++        else
++#endif
++            BIO_printf(fbio, "Upgrade: TLS/1.0\r\n");
++        BIO_printf(fbio, "User-Agent: s_client/%s OpenSSL/%s\r\n",
++                   OPENSSL_VERSION_TEXT, SSLeay_version(SSLEAY_VERSION));
++        BIO_printf(fbio, "\r\n");
++        (void)BIO_flush(fbio);
++        /* wait for multi-line HTTP/1.1 101 Switching Protocols response */
++        mbuf_len = BIO_gets(fbio, mbuf, BUFSIZZ);
++        BIO_printf(bio_err, "%s", mbuf);
++        if (strstr(mbuf, " 101 "))
++            foundit = 1;
++        do {
++            mbuf_len = BIO_gets(fbio, mbuf, BUFSIZZ);
++            BIO_printf(bio_err, "%s", mbuf);
++        }
++        while (mbuf_len >= 2 && mbuf[0] != '\r' && mbuf[1] != '\n');
++        (void)BIO_flush(fbio);
++        BIO_pop(fbio);
++        BIO_free(fbio);
++        if (!foundit)
++            BIO_printf(bio_err,
++                       "Server response was not 101 Switching Protocols"
++                       " try anyway...\n");
+     }
+ 
+     for (;;) {
