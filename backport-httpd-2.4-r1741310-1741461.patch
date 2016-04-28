@@ -1,0 +1,188 @@
+Index: modules/http2/h2_conn_io.c
+===================================================================
+--- modules/http2/h2_conn_io.c	(revision 1741461)
++++ modules/http2/h2_conn_io.c	(working copy)
+@@ -191,7 +191,7 @@
+         return APR_SUCCESS;
+     }
+     
+-    ap_update_child_status_from_conn(c->sbh, SERVER_BUSY_WRITE, c);
++    ap_update_child_status(c->sbh, SERVER_BUSY_WRITE, NULL);
+     apr_brigade_length(bb, 0, &bblen);
+     h2_conn_io_bb_log(c, 0, APLOG_TRACE2, "master conn pass", bb);
+     status = ap_pass_brigade(c->output_filters, bb);
+Index: modules/http2/h2_task.c
+===================================================================
+--- modules/http2/h2_task.c	(revision 1741461)
++++ modules/http2/h2_task.c	(working copy)
+@@ -682,7 +682,7 @@
+                   "h2_task(%s): create request_rec", task->id);
+     r = h2_request_create_rec(req, c);
+     if (r && (r->status == HTTP_OK)) {
+-        ap_update_child_status(c->sbh, SERVER_BUSY_READ, r);
++        ap_update_child_status(c->sbh, SERVER_BUSY_WRITE, r);
+         
+         if (cs) {
+             cs->state = CONN_STATE_HANDLER;
+Index: server/core.c
+===================================================================
+--- server/core.c	(revision 1741461)
++++ server/core.c	(working copy)
+@@ -4877,7 +4877,7 @@
+     conn_rec *c = (conn_rec *) apr_pcalloc(ptrans, sizeof(conn_rec));
+ 
+     c->sbh = sbh;
+-    (void)ap_update_child_status(c->sbh, SERVER_BUSY_READ, (request_rec *)NULL);
++    ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
+ 
+     /* Got a connection structure, so initialize what fields we can
+      * (the rest are zeroed out by pcalloc).
+Index: server/mpm/event/event.c
+===================================================================
+--- server/mpm/event/event.c	(revision 1741461)
++++ server/mpm/event/event.c	(working copy)
+@@ -1114,7 +1114,7 @@
+     if (cs->pub.state == CONN_STATE_WRITE_COMPLETION) {
+         ap_filter_t *output_filter = c->output_filters;
+         apr_status_t rv;
+-        ap_update_child_status_from_conn(sbh, SERVER_BUSY_WRITE, c);
++        ap_update_child_status(sbh, SERVER_BUSY_WRITE, NULL);
+         while (output_filter->next != NULL) {
+             output_filter = output_filter->next;
+         }
+@@ -1910,7 +1910,8 @@
+         }
+ 
+         ap_update_child_status_from_indexes(process_slot, thread_slot,
+-                                            dying ? SERVER_GRACEFUL : SERVER_READY, NULL);
++                                            dying ? SERVER_GRACEFUL
++                                                  : SERVER_READY, NULL);
+       worker_pop:
+         if (workers_may_exit) {
+             break;
+@@ -1965,9 +1966,8 @@
+     }
+ 
+     ap_update_child_status_from_indexes(process_slot, thread_slot,
+-                                        dying ? SERVER_DEAD :
+-                                        SERVER_GRACEFUL,
+-                                        (request_rec *) NULL);
++                                        dying ? SERVER_DEAD
++                                              : SERVER_GRACEFUL, NULL);
+ 
+     apr_thread_exit(thd, APR_SUCCESS);
+     return NULL;
+@@ -2728,8 +2728,7 @@
+ 
+                 for (i = 0; i < threads_per_child; i++)
+                     ap_update_child_status_from_indexes(child_slot, i,
+-                                                        SERVER_DEAD,
+-                                                        (request_rec *) NULL);
++                                                        SERVER_DEAD, NULL);
+ 
+                 event_note_child_killed(child_slot, 0, 0);
+                 ps = &ap_scoreboard_image->parent[child_slot];
+Index: server/mpm/winnt/child.c
+===================================================================
+--- server/mpm/winnt/child.c	(revision 1741461)
++++ server/mpm/winnt/child.c	(working copy)
+@@ -894,8 +894,7 @@
+         }
+     }
+ 
+-    ap_update_child_status_from_indexes(0, thread_num, SERVER_DEAD,
+-                                        (request_rec *) NULL);
++    ap_update_child_status_from_indexes(0, thread_num, SERVER_DEAD, NULL);
+ 
+     return 0;
+ }
+@@ -1314,13 +1313,13 @@
+                      threads_created);
+     }
+     for (i = 0; i < threads_created; i++) {
+-        int *score_idx;
++        int *idx;
+         TerminateThread(child_handles[i], 1);
+         CloseHandle(child_handles[i]);
+         /* Reset the scoreboard entry for the thread we just whacked */
+-        score_idx = apr_hash_get(ht, &child_handles[i], sizeof(HANDLE));
+-        if (score_idx) {
+-            ap_update_child_status_from_indexes(0, *score_idx, SERVER_DEAD, NULL);
++        idx = apr_hash_get(ht, &child_handles[i], sizeof(HANDLE));
++        if (idx) {
++            ap_update_child_status_from_indexes(0, *idx, SERVER_DEAD, NULL);
+         }
+     }
+     ap_log_error(APLOG_MARK, APLOG_NOTICE, APR_SUCCESS, ap_server_conf, APLOGNO(00364)
+Index: server/mpm/worker/worker.c
+===================================================================
+--- server/mpm/worker/worker.c	(revision 1741461)
++++ server/mpm/worker/worker.c	(working copy)
+@@ -928,7 +928,8 @@
+     ap_scoreboard_image->servers[process_slot][thread_slot].pid = ap_my_pid;
+     ap_scoreboard_image->servers[process_slot][thread_slot].tid = apr_os_thread_current();
+     ap_scoreboard_image->servers[process_slot][thread_slot].generation = retained->my_generation;
+-    ap_update_child_status_from_indexes(process_slot, thread_slot, SERVER_STARTING, NULL);
++    ap_update_child_status_from_indexes(process_slot, thread_slot,
++                                        SERVER_STARTING, NULL);
+ 
+ #ifdef HAVE_PTHREAD_KILL
+     unblock_signal(WORKER_SIGNAL);
+@@ -949,7 +950,8 @@
+             is_idle = 1;
+         }
+ 
+-        ap_update_child_status_from_indexes(process_slot, thread_slot, SERVER_READY, NULL);
++        ap_update_child_status_from_indexes(process_slot, thread_slot,
++                                            SERVER_READY, NULL);
+ worker_pop:
+         if (workers_may_exit) {
+             break;
+@@ -995,7 +997,8 @@
+     }
+ 
+     ap_update_child_status_from_indexes(process_slot, thread_slot,
+-        (dying) ? SERVER_DEAD : SERVER_GRACEFUL, (request_rec *) NULL);
++                                        dying ? SERVER_DEAD
++                                              : SERVER_GRACEFUL, NULL);
+ 
+     apr_thread_exit(thd, APR_SUCCESS);
+     return NULL;
+@@ -1730,8 +1733,8 @@
+                 process_score *ps;
+ 
+                 for (i = 0; i < threads_per_child; i++)
+-                    ap_update_child_status_from_indexes(child_slot, i, SERVER_DEAD,
+-                                                        (request_rec *) NULL);
++                    ap_update_child_status_from_indexes(child_slot, i,
++                                                        SERVER_DEAD, NULL);
+ 
+                 worker_note_child_killed(child_slot, 0, 0);
+                 ps = &ap_scoreboard_image->parent[child_slot];
+Index: server/scoreboard.c
+===================================================================
+--- server/scoreboard.c	(revision 1741461)
++++ server/scoreboard.c	(working copy)
+@@ -500,8 +500,11 @@
+         else if (r) {
+             copy_request(ws->request, sizeof(ws->request), r);
+         }
++        else if (c) {
++            ws->request[0]='\0';
++        }
+ 
+-        if (r) {
++        if (r && r->useragent_ip) {
+             if (!(val = ap_get_useragent_host(r, REMOTE_NOLOOKUP, NULL)))
+                 apr_cpystrn(ws->client, r->useragent_ip, sizeof(ws->client));
+             else
+@@ -524,6 +527,9 @@
+                 apr_cpystrn(ws->vhost, s->server_hostname, sizeof(ws->vhost));
+             }
+         }
++        else if (c) {
++            ws->vhost[0]='\0';
++        }
+ 
+         if (c) {
+             val = ap_get_protocol(c);
