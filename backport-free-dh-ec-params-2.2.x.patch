@@ -1,0 +1,43 @@
+Index: CHANGES
+===================================================================
+--- CHANGES	(revision 1747399)
++++ CHANGES	(working copy)
+@@ -1,6 +1,9 @@
+                                                          -*- coding: utf-8 -*-
+ Changes with Apache 2.2.32
+ 
++  *) mod_ssl: Fix a possible memory leak on restart for custom [EC]DH params.
++     [Jan Kaluza, Yann Ylavic]
++
+   *) mod_proxy: Fix a regression with 2.2.31 that caused inherited workers to
+      use a different scoreboard slot then the original one.  PR 58267.
+      [Ruediger Pluem]
+Index: modules/ssl/ssl_engine_init.c
+===================================================================
+--- modules/ssl/ssl_engine_init.c	(revision 1747399)
++++ modules/ssl/ssl_engine_init.c	(working copy)
+@@ -900,7 +900,7 @@
+     const char *rsa_id, *dsa_id;
+ #ifndef OPENSSL_NO_EC
+     const char *ecc_id;
+-    EC_GROUP *ecparams;
++    EC_GROUP *ecparams = NULL;
+     int nid;
+     EC_KEY *eckey = NULL;
+ #endif
+@@ -973,6 +973,7 @@
+                      "Custom DH parameters (%d bits) for %s loaded from %s",
+                      BN_num_bits(dhparams->p), vhost_id,
+                      mctx->pks->cert_files[0]);
++        DH_free(dhparams);
+     }
+ 
+ #ifndef OPENSSL_NO_EC
+@@ -1001,6 +1002,7 @@
+ #endif
+     }
+     EC_KEY_free(eckey);
++    EC_GROUP_free(ecparams);
+ #endif
+ }
+ 
