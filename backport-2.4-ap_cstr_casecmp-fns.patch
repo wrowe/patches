@@ -1,6 +1,6 @@
 Index: CHANGES
 ===================================================================
---- CHANGES	(revision 1747478)
+--- CHANGES	(revision 1747559)
 +++ CHANGES	(working copy)
 @@ -2,6 +2,10 @@
  
@@ -8,14 +8,14 @@ Index: CHANGES
  
 +  *) Add ap_cstr_casecmp[n]() - placeholder of apr_cstr_casecmp[n] functions
 +     for case-insensitive C/POSIX-locale token comparison.
-+     [Jim Jagielski, William Rowe, Yann Ylavic, and the Subversion team]
++     [Jim Jagielski, William Rowe, Yann Ylavic, Branko Čibej]
 +
-   *) mod_http2: fixed a write after free when streams/connections
-      were aborted before tasks returned. [Stefan Eissing] 
-   
+   *) mod_http2: improved cleanup of connection/streams/tasks to always
+      have deterministic order regardless of event initiating it. Addresses
+      reported crashes due to memory read after free issues. 
 Index: include/ap_mmn.h
 ===================================================================
---- include/ap_mmn.h	(revision 1747478)
+--- include/ap_mmn.h	(revision 1747559)
 +++ include/ap_mmn.h	(working copy)
 @@ -475,6 +475,7 @@
   * 20120211.59 (2.4.21-dev) Add ap_getword_conf2[_nc](),
@@ -36,7 +36,7 @@ Index: include/ap_mmn.h
   * Determine if the server's current MODULE_MAGIC_NUMBER is at least a
 Index: include/httpd.h
 ===================================================================
---- include/httpd.h	(revision 1747478)
+--- include/httpd.h	(revision 1747559)
 +++ include/httpd.h	(working copy)
 @@ -2340,6 +2340,34 @@
  AP_DECLARE(int) ap_array_str_contains(const apr_array_header_t *array, 
@@ -75,7 +75,7 @@ Index: include/httpd.h
  #endif
 Index: server/util.c
 ===================================================================
---- server/util.c	(revision 1747478)
+--- server/util.c	(revision 1747559)
 +++ server/util.c	(working copy)
 @@ -96,7 +96,6 @@
  #undef APLOG_MODULE_INDEX
@@ -214,12 +214,3 @@ Index: server/util.c
 +    return 0;
 +}
 +
-Index: .
-===================================================================
---- .	(revision 1747478)
-+++ .	(working copy)
-
-Property changes on: .
-___________________________________________________________________
-Modified: svn:mergeinfo
-   Merged /httpd/httpd/trunk:r1715401,1715404,1715524,1715526-1715527,1715546,1715632,1715736,1715859,1722194,1747468,1747478
