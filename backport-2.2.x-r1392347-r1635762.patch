@@ -10,9 +10,9 @@
 +  *) core: ErrorDocument now works for requests without a Host header.
 +     PR 48357.  [Jeff Trawick]
 +
---- server/protocol.c.applied-r951900-r1178566-r1185385-r1188745-r1352911-r1433613	2016-08-23 00:12:55.608033906 -0500
-+++ server/protocol.c	2016-08-23 09:22:24.310342091 -0500
-@@ -906,7 +906,7 @@
+--- server/protocol.c.applied-r951900-r1178566-r1185385-r1188745-r1352911-r1433613	2016-08-23 10:36:10.153503946 -0500
++++ server/protocol.c	2016-08-23 10:38:03.955912009 -0500
+@@ -908,7 +908,7 @@
      request_rec *r;
      apr_pool_t *p;
      const char *expect;
@@ -21,7 +21,7 @@
      apr_bucket_brigade *tmp_bb;
      apr_socket_t *csd;
      apr_interval_time_t cur_timeout;
-@@ -969,9 +969,12 @@
+@@ -971,9 +971,12 @@
                  ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
                                "request failed: invalid characters in URI");
              }
@@ -35,7 +35,7 @@
              apr_brigade_destroy(tmp_bb);
              return r;
          }
-@@ -1092,7 +1095,7 @@
+@@ -1094,7 +1097,7 @@
           * HTTP/1.1 mentions twice (S9, S14.23) that a request MUST contain
           * a Host: header, and the server MUST respond with 400 if it doesn't.
           */
@@ -44,7 +44,7 @@
          ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
                        "client sent HTTP/1.1 request without hostname "
                        "(see RFC2616 section 14.23): %s", r->uri);
-@@ -1108,14 +1111,8 @@
+@@ -1110,14 +1113,8 @@
      ap_add_input_filter_handle(ap_http_input_filter_handle,
                                 NULL, r, r->connection);
  
