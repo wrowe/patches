@@ -1,0 +1,63 @@
+--- CHANGES	(revision 1757374)
++++ CHANGES	(working copy)
+@@ -4,3 +4,9 @@
+   *) core: CVE-2016-5387: Mitigate [f]cgi "httpoxy" issues.
+      [Dominic Scheirlinck <dominic vendhq.com>, Yann Ylavic]
+ 
++  *) core: Support custom ErrorDocuments for HTTP 501 and 414 status codes.
++     PR 57167 [Edward Lu <Chaosed0 gmail.com>]
++
++  *) core: ErrorDocument now works for requests without a Host header.
++     PR 48357.  [Jeff Trawick]
++
+--- server/protocol.c.applied-r951900-r1178566-r1185385-r1188745-r1352911-r1433613	2016-08-23 00:12:55.608033906 -0500
++++ server/protocol.c	2016-08-23 09:22:24.310342091 -0500
+@@ -906,7 +906,7 @@
+     request_rec *r;
+     apr_pool_t *p;
+     const char *expect;
+-    int access_status;
++    int access_status = HTTP_OK;
+     apr_bucket_brigade *tmp_bb;
+     apr_socket_t *csd;
+     apr_interval_time_t cur_timeout;
+@@ -969,9 +969,12 @@
+                 ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
+                               "request failed: invalid characters in URI");
+             }
+-            ap_send_error_response(r, 0);
++            access_status = r->status;
++            r->status = HTTP_OK;
++            ap_die(access_status, r);
+             ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
+             ap_run_log_transaction(r);
++            r = NULL;
+             apr_brigade_destroy(tmp_bb);
+             return r;
+         }
+@@ -1092,7 +1095,7 @@
+          * HTTP/1.1 mentions twice (S9, S14.23) that a request MUST contain
+          * a Host: header, and the server MUST respond with 400 if it doesn't.
+          */
+-        r->status = HTTP_BAD_REQUEST;
++        access_status = HTTP_BAD_REQUEST;
+         ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
+                       "client sent HTTP/1.1 request without hostname "
+                       "(see RFC2616 section 14.23): %s", r->uri);
+@@ -1108,14 +1111,8 @@
+     ap_add_input_filter_handle(ap_http_input_filter_handle,
+                                NULL, r, r->connection);
+ 
+-    if (r->status != HTTP_OK) {
+-        ap_send_error_response(r, 0);
+-        ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
+-        ap_run_log_transaction(r);
+-        return r;
+-    }
+-
+-    if ((access_status = ap_run_post_read_request(r))) {
++    if (access_status != HTTP_OK
++        || (access_status = ap_run_post_read_request(r))) {
+         ap_die(access_status, r);
+         ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
+         ap_run_log_transaction(r);
